@@ -96,7 +96,7 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
     try {
       await apiFetch(`/api/orders/${order.id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'picked_up' }),
+        body: JSON.stringify({ status: 'delivered' }),
       })
       setError(null)
       void refresh()

@@ -201,7 +201,7 @@ export default function Orders({ onBack, onSelectOrder }: OrdersProps) {
               const action =
                 order.delivery_type === 'pickup' &&
                 order.status === 'ready'
-                  ? { label: 'Mark as picked up', to: 'picked_up' }
+                  ? { label: 'Mark as picked up', to: 'delivered' }
                   : nextActions[order.status ?? '']
               const actionInFlight = updatingId === order.id
               return (

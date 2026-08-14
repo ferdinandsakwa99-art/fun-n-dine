@@ -241,7 +241,7 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
               {(() => {
                 const pickupAction =
                   order.delivery_type === 'pickup' && order.status === 'ready'
-                    ? { label: 'Mark as picked up', to: 'picked_up' }
+                    ? { label: 'Mark as picked up', to: 'delivered' }
                     : undefined
                 const action = pickupAction ?? nextActions[order.status ?? '']
                 if (!action) return null
