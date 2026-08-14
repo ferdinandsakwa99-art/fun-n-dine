@@ -89,6 +89,11 @@ export default function Profile({ onBack, onLogout, onSelectOrder }: ProfileProp
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [showAddressForm, setShowAddressForm] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locationNote, setLocationNote] = useState<string | null>(null)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [latitude, setLatitude] = useState<number | null>(null)
+  const [longitude, setLongitude] = useState<number | null>(null)
 
   const [orders, setOrders] = useState<Order[]>([])
   const [ordersLoading, setOrdersLoading] = useState(true)
@@ -162,6 +167,45 @@ export default function Profile({ onBack, onLogout, onSelectOrder }: ProfileProp
     }
   }
 
+  const handleUseCurrentLocation = () => {
+    if (locating) return
+    setLocating(true)
+    setLocationError(null)
+    setLocationNote(null)
+
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      setLocating(false)
+      setLocationError('Geolocation is not supported in this browser.')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        setLatitude(lat)
+        setLongitude(lng)
+        setForm((prev) => ({
+          ...prev,
+          full_address: `Current location (${lat.toFixed(6)}, ${lng.toFixed(6)})`,
+        }))
+        setLocationNote(
+          'Location detected. Review the address below before saving.',
+        )
+        setLocating(false)
+      },
+      () => {
+        setLatitude(null)
+        setLongitude(null)
+        setLocating(false)
+        setLocationError(
+          'Could not detect your location. Check that location services and permissions are enabled, then try again.',
+        )
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },
+    )
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setSubmitError(null)
@@ -179,6 +223,10 @@ export default function Profile({ onBack, onLogout, onSelectOrder }: ProfileProp
         payload[key] = form[key].trim()
       }
     }
+    if (latitude != null && longitude != null) {
+      payload.latitude = latitude
+      payload.longitude = longitude
+    }
 
     try {
       await apiFetch('/api/addresses', {
@@ -186,6 +234,10 @@ export default function Profile({ onBack, onLogout, onSelectOrder }: ProfileProp
         body: JSON.stringify(payload),
       })
       setForm(initialForm)
+      setLatitude(null)
+      setLongitude(null)
+      setLocationNote(null)
+      setLocationError(null)
       setSaved(true)
       setAddressesError(null)
       setShowAddressForm(false)
@@ -389,6 +441,10 @@ export default function Profile({ onBack, onLogout, onSelectOrder }: ProfileProp
               onClick={() => {
                 setSubmitError(null)
                 setSaved(false)
+                setLatitude(null)
+                setLongitude(null)
+                setLocationNote(null)
+                setLocationError(null)
                 setShowAddressForm(true)
               }}
               className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700"
@@ -479,6 +535,50 @@ export default function Profile({ onBack, onLogout, onSelectOrder }: ProfileProp
               <p className="mt-0.5 text-sm text-gray-500">
                 Where should we deliver your orders?
               </p>
+
+          <button
+            type="button"
+            onClick={handleUseCurrentLocation}
+            disabled={locating}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-purple-300 bg-purple-50 px-4 py-2.5 text-sm font-semibold text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            {locating ? 'Detecting your location...' : 'Use my current location'}
+          </button>
+          <p className="mt-2 text-center text-xs text-gray-400">
+            We will detect where you are and fill in the address. Review it
+            before saving.
+          </p>
+
+          {locationNote && (
+            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              {locationNote}
+            </div>
+          )}
+
+          {locationError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {locationError}
+            </div>
+          )}
 
           {saved && (
             <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
