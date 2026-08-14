@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+.rec-viewport {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.rec-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.rec-row {
+  display: flex;
+  width: max-content;
+}
+
+.rec-copy {
+  display: flex;
+  gap: 1rem;
+  padding-right: 1rem;
+}
+
+@keyframes marquee-ltr {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .rec-row {
+    animation: marquee-ltr 30s linear infinite;
+  }
+
+  .rec-row.is-paused {
+    animation-play-state: paused;
+  }
+}
+
+@media (min-width: 768px) {
+  .rec-copy:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-row {
+    animation: none;
+  }
+
+  .rec-copy:last-child {
+    display: none;
+  }
+}
