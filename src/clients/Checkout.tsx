@@ -36,6 +36,8 @@ interface Address {
   state?: string
   zip_code?: string
   is_default?: boolean
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface CheckoutProps {
@@ -45,8 +47,29 @@ interface CheckoutProps {
 
 type PaymentMethod = 'cash_on_delivery' | 'pay_now'
 
+interface RestaurantLocation {
+  latitude?: number | null
+  longitude?: number | null
+}
+
 const generateOrderNumber = () =>
   `ORD-${Math.floor(1000 + Math.random() * 9000)}`
+
+const haversineKm = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const r = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * r * Math.asin(Math.sqrt(a))
+}
 
 export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
   const [cart, setCart] = useState<Cart | null>(null)
@@ -60,6 +83,9 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
   const [placing, setPlacing] = useState(false)
   const [placeError, setPlaceError] = useState<string | null>(null)
   const [placedOrder, setPlacedOrder] = useState<string | null>(null)
+  const [restaurantLocation, setRestaurantLocation] =
+    useState<RestaurantLocation | null>(null)
+  const [deliveryFee, setDeliveryFee] = useState(0)
 
   const refresh = useCallback(() => {
     Promise.all([
@@ -104,13 +130,64 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
     (sum, item) => sum + Number(item.total_price),
     0,
   )
-  const deliveryFee = 0
   const discount = Number(cart?.discount) || 0
   const tax = 0
   const total = subtotal + deliveryFee + tax - discount
   const restaurantId = items.find(
     (item) => item.menu_item?.restaurant_id,
   )?.menu_item?.restaurant_id
+
+  useEffect(() => {
+    if (!restaurantId) {
+      setRestaurantLocation(null)
+      return
+    }
+    let cancelled = false
+    apiFetch(`/api/restaurants/${restaurantId}`)
+      .then(
+        (res) =>
+          res.json() as Promise<{ data?: { restaurant?: RestaurantLocation } }>,
+      )
+      .then((body) => {
+        if (!cancelled) {
+          setRestaurantLocation(body.data?.restaurant ?? null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRestaurantLocation(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [restaurantId])
+
+  useEffect(() => {
+    if (!restaurantId || !selectedAddressId) {
+      setDeliveryFee(0)
+      return
+    }
+    const address = addresses.find((addr) => addr.id === selectedAddressId)
+    const restLat = restaurantLocation?.latitude
+    const restLng = restaurantLocation?.longitude
+    const destLat = address?.latitude
+    const destLng = address?.longitude
+    if (
+      restLat == null ||
+      restLng == null ||
+      destLat == null ||
+      destLng == null
+    ) {
+      setDeliveryFee(70)
+      return
+    }
+    const distance = haversineKm(
+      Number(restLat),
+      Number(restLng),
+      Number(destLat),
+      Number(destLng),
+    )
+    setDeliveryFee(Math.max(70, Math.round(70 + 30 * distance)))
+  }, [restaurantId, selectedAddressId, addresses, restaurantLocation])
 
   const handlePlaceOrder = async (e: FormEvent) => {
     e.preventDefault()
@@ -313,6 +390,10 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
                         KSh {total.toFixed(2)}
                       </span>
                     </div>
+                    <p className="pt-1 text-xs text-gray-400">
+                      Delivery fee is an estimate and may be adjusted at order
+                      confirmation.
+                    </p>
                   </div>
                 </>
               )}
