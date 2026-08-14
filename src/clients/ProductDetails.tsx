@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from '../lib/api'
+import { supabase } from '../lib/supabase'
+import { addToCart } from '../lib/cartStore'
 
 interface MenuImage {
   id: string
@@ -102,14 +104,26 @@ export default function ProductDetails({ itemId, onBack }: ProductDetailsProps) 
     setAdded(false)
     setAdding(true)
     try {
-      await apiFetch('/api/cart/items', {
-        method: 'POST',
-        body: JSON.stringify({
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        await apiFetch('/api/cart/items', {
+          method: 'POST',
+          body: JSON.stringify({
+            menu_item_id: item.id,
+            quantity,
+            special_instructions: instructions.trim() || undefined,
+          }),
+        })
+      } else {
+        addToCart({
           menu_item_id: item.id,
+          name: item.name,
+          unit_price: Number(displayPrice) || 0,
           quantity,
           special_instructions: instructions.trim() || undefined,
-        }),
-      })
+          restaurant_id: item.restaurant_id,
+        })
+      }
       setAdded(true)
       setQuantity(1)
       setInstructions('')

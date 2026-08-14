@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
+import { getStoredJSON, setStoredJSON, removeStored } from './lib/storage'
+import { syncLocalCartToServer } from './lib/cartStore'
 import ClientAccount from './clients/Account'
 import ChefSignup from './chefs/Signup'
 import ChefLogin from './chefs/Login'
@@ -55,12 +57,18 @@ type Screen =
   | 'rider-login'
   | 'rider-home'
 
+const SELECTED_RESTAURANT_KEY = 'chef:selected-restaurant'
+
+interface RestaurantRef {
+  id: string
+  name: string
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>('client-home')
-  const [selectedRestaurant, setSelectedRestaurant] = useState<{
-    id: string
-    name: string
-  } | null>(null)
+  const [selectedRestaurant, setSelectedRestaurant] = useState<RestaurantRef | null>(
+    () => getStoredJSON<RestaurantRef | null>(SELECTED_RESTAURANT_KEY, null),
+  )
   const [selectedCategory, setSelectedCategory] = useState<{
     id: string
     name: string
@@ -74,6 +82,21 @@ function App() {
     'chef-settings',
   )
   const [orderDetailsBack, setOrderDetailsBack] = useState<Screen>('chef-home')
+
+  useEffect(() => {
+    if (selectedRestaurant) {
+      setStoredJSON(SELECTED_RESTAURANT_KEY, selectedRestaurant)
+    } else {
+      removeStored(SELECTED_RESTAURANT_KEY)
+    }
+  }, [selectedRestaurant])
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) void syncLocalCartToServer()
+    })
+    return () => data.subscription.unsubscribe()
+  }, [])
 
   return (
     <>
@@ -264,6 +287,7 @@ function App() {
         <ClientCheckout
           onBack={() => setScreen('client-cart')}
           onPlaced={() => setScreen('client-home')}
+          onSignIn={() => setScreen('client-account')}
         />
       )}
       {screen === 'rider' && (

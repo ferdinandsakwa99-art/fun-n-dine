@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from '../lib/api'
+import { getStoredJSON, setStoredJSON, removeStored } from '../lib/storage'
 
 interface Restaurant {
   id: string
@@ -36,6 +37,8 @@ const initialForm: RestaurantForm = {
   email: '',
   is_open: true,
 }
+
+const DRAFT_KEY = 'draft:restaurant-create'
 
 const toSlug = (value: string) =>
   value
@@ -75,6 +78,11 @@ export default function Restaurant({ onBack, onSelect }: RestaurantProps) {
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!showForm) return
+    setStoredJSON(DRAFT_KEY, form)
+  }, [form, showForm])
+
   const handleRetry = () => {
     setLoading(true)
     setError(null)
@@ -82,7 +90,7 @@ export default function Restaurant({ onBack, onSelect }: RestaurantProps) {
   }
 
   const openForm = () => {
-    setForm(initialForm)
+    setForm(getStoredJSON<RestaurantForm>(DRAFT_KEY, initialForm))
     setFormError(null)
     setShowForm(true)
   }
@@ -128,6 +136,7 @@ export default function Restaurant({ onBack, onSelect }: RestaurantProps) {
       })
       setShowForm(false)
       setForm(initialForm)
+      removeStored(DRAFT_KEY)
       setError(null)
       void refresh()
     } catch (err) {

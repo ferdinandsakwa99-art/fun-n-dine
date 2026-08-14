@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from '../lib/api'
+import { getStoredJSON, setStoredJSON, removeStored } from '../lib/storage'
 
 interface MenuItemImage {
   id: string
@@ -125,6 +126,16 @@ export default function MenuItems({
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!showForm) return
+    setStoredJSON(`draft:menu-item:${category.id}`, form)
+  }, [form, showForm, category.id])
+
+  useEffect(() => {
+    if (!editingItem || !editForm) return
+    setStoredJSON(`draft:menu-item-edit:${editingItem.id}`, editForm)
+  }, [editingItem, editForm])
+
   const handleRetry = () => {
     setLoading(true)
     setError(null)
@@ -132,7 +143,9 @@ export default function MenuItems({
   }
 
   const openForm = () => {
-    setForm(initialForm)
+    setForm(
+      getStoredJSON<MenuItemForm>(`draft:menu-item:${category.id}`, initialForm),
+    )
     setFormError(null)
     setShowForm(true)
   }
@@ -183,6 +196,7 @@ export default function MenuItems({
       })
       setForm(initialForm)
       setShowForm(false)
+      removeStored(`draft:menu-item:${category.id}`)
       setError(null)
       void refresh()
     } catch (err) {
@@ -210,32 +224,38 @@ export default function MenuItems({
   const openEdit = async (item: MenuItem) => {
     setEditError(null)
     setEditingItem(item)
-    setEditForm({
-      name: item.name ?? '',
-      slug: item.slug ?? '',
-      description: item.description ?? '',
-      price: item.price !== undefined && item.price !== null ? String(item.price) : '',
-      sale_price:
-        item.sale_price !== undefined && item.sale_price !== null
-          ? String(item.sale_price)
-          : '',
-      sku: item.sku ?? '',
-      calories:
-        item.calories !== undefined && item.calories !== null
-          ? String(item.calories)
-          : '',
-      preparation_time:
-        item.preparation_time !== undefined && item.preparation_time !== null
-          ? String(item.preparation_time)
-          : '',
-      sort_order: item.sort_order !== undefined ? String(item.sort_order) : '0',
-      is_available: item.is_available ?? true,
-      is_vegetarian: item.is_vegetarian ?? false,
-      is_vegan: item.is_vegan ?? false,
-      is_gluten_free: item.is_gluten_free ?? false,
-      is_spicy: item.is_spicy ?? false,
-      is_featured: item.is_featured ?? false,
-    })
+    const draft = getStoredJSON<EditForm | null>(
+      `draft:menu-item-edit:${item.id}`,
+      null,
+    )
+    setEditForm(
+      draft ?? {
+        name: item.name ?? '',
+        slug: item.slug ?? '',
+        description: item.description ?? '',
+        price: item.price !== undefined && item.price !== null ? String(item.price) : '',
+        sale_price:
+          item.sale_price !== undefined && item.sale_price !== null
+            ? String(item.sale_price)
+            : '',
+        sku: item.sku ?? '',
+        calories:
+          item.calories !== undefined && item.calories !== null
+            ? String(item.calories)
+            : '',
+        preparation_time:
+          item.preparation_time !== undefined && item.preparation_time !== null
+            ? String(item.preparation_time)
+            : '',
+        sort_order: item.sort_order !== undefined ? String(item.sort_order) : '0',
+        is_available: item.is_available ?? true,
+        is_vegetarian: item.is_vegetarian ?? false,
+        is_vegan: item.is_vegan ?? false,
+        is_gluten_free: item.is_gluten_free ?? false,
+        is_spicy: item.is_spicy ?? false,
+        is_featured: item.is_featured ?? false,
+      },
+    )
     setImages([])
     setUploadFile(null)
     setUploadAlt('')
@@ -319,6 +339,7 @@ export default function MenuItems({
       })
       setEditingItem(null)
       setEditForm(null)
+      removeStored(`draft:menu-item-edit:${editingItem.id}`)
       setError(null)
       void refresh()
     } catch (err) {

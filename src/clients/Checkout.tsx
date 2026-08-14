@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from '../lib/api'
+import { supabase } from '../lib/supabase'
+import { getCart, type LocalCartItem } from '../lib/cartStore'
 
 interface CartMenuItem {
   id: string
@@ -43,6 +45,7 @@ interface Address {
 interface CheckoutProps {
   onBack?: () => void
   onPlaced?: () => void
+  onSignIn?: () => void
 }
 
 type PaymentMethod = 'cash_on_delivery' | 'pay_now'
@@ -71,8 +74,10 @@ const haversineKm = (
   return 2 * r * Math.asin(Math.sqrt(a))
 }
 
-export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
+export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) {
   const [cart, setCart] = useState<Cart | null>(null)
+  const [session, setSession] = useState<boolean | null>(null)
+  const [guestItems, setGuestItems] = useState<LocalCartItem[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>('')
   const [paymentMethod, setPaymentMethod] =
@@ -85,34 +90,42 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
   const [placedOrder, setPlacedOrder] = useState<string | null>(null)
   const [restaurantLocation, setRestaurantLocation] =
     useState<RestaurantLocation | null>(null)
-  const [deliveryFee, setDeliveryFee] = useState(0)
 
   const refresh = useCallback(() => {
-    Promise.all([
-      apiFetch('/api/cart').then(
-        (res) => res.json() as Promise<{ data?: { cart?: Cart } }>,
-      ),
-      apiFetch('/api/addresses').then(
-        (res) => res.json() as Promise<{ data?: { addresses?: Address[] } }>,
-      ),
-    ])
-      .then(([cartBody, addressesBody]) => {
-        const loadedCart = cartBody.data?.cart ?? null
-        const loadedAddresses = addressesBody.data?.addresses ?? []
-        setCart(loadedCart)
-        setAddresses(loadedAddresses)
-        if (!selectedAddressId) {
-          setSelectedAddressId(
-            loadedAddresses.find((addr) => addr.is_default)?.id ??
-              loadedAddresses[0]?.id ??
-              '',
-          )
-        }
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Failed to load checkout')
-      })
-      .finally(() => setLoading(false))
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        setSession(false)
+        setGuestItems(getCart())
+        setLoading(false)
+        return
+      }
+      setSession(true)
+      Promise.all([
+        apiFetch('/api/cart').then(
+          (res) => res.json() as Promise<{ data?: { cart?: Cart } }>,
+        ),
+        apiFetch('/api/addresses').then(
+          (res) => res.json() as Promise<{ data?: { addresses?: Address[] } }>,
+        ),
+      ])
+        .then(([cartBody, addressesBody]) => {
+          const loadedCart = cartBody.data?.cart ?? null
+          const loadedAddresses = addressesBody.data?.addresses ?? []
+          setCart(loadedCart)
+          setAddresses(loadedAddresses)
+          if (!selectedAddressId) {
+            setSelectedAddressId(
+              loadedAddresses.find((addr) => addr.is_default)?.id ??
+                loadedAddresses[0]?.id ??
+                '',
+            )
+          }
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : 'Failed to load checkout')
+        })
+        .finally(() => setLoading(false))
+    })
   }, [selectedAddressId])
 
   useEffect(() => {
@@ -132,16 +145,38 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
   )
   const discount = Number(cart?.discount) || 0
   const tax = 0
-  const total = subtotal + deliveryFee + tax - discount
   const restaurantId = items.find(
     (item) => item.menu_item?.restaurant_id,
   )?.menu_item?.restaurant_id
 
-  useEffect(() => {
-    if (!restaurantId) {
-      setRestaurantLocation(null)
-      return
+  const deliveryFee = useMemo(() => {
+    if (!restaurantId || !selectedAddressId) return 0
+    const address = addresses.find((addr) => addr.id === selectedAddressId)
+    const restLat = restaurantLocation?.latitude
+    const restLng = restaurantLocation?.longitude
+    const destLat = address?.latitude
+    const destLng = address?.longitude
+    if (
+      restLat == null ||
+      restLng == null ||
+      destLat == null ||
+      destLng == null
+    ) {
+      return 70
     }
+    const distance = haversineKm(
+      Number(restLat),
+      Number(restLng),
+      Number(destLat),
+      Number(destLng),
+    )
+    return Math.max(70, Math.round(70 + 30 * distance))
+  }, [restaurantId, selectedAddressId, addresses, restaurantLocation])
+
+  const total = subtotal + deliveryFee + tax - discount
+
+  useEffect(() => {
+    if (!restaurantId) return
     let cancelled = false
     apiFetch(`/api/restaurants/${restaurantId}`)
       .then(
@@ -160,34 +195,6 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
       cancelled = true
     }
   }, [restaurantId])
-
-  useEffect(() => {
-    if (!restaurantId || !selectedAddressId) {
-      setDeliveryFee(0)
-      return
-    }
-    const address = addresses.find((addr) => addr.id === selectedAddressId)
-    const restLat = restaurantLocation?.latitude
-    const restLng = restaurantLocation?.longitude
-    const destLat = address?.latitude
-    const destLng = address?.longitude
-    if (
-      restLat == null ||
-      restLng == null ||
-      destLat == null ||
-      destLng == null
-    ) {
-      setDeliveryFee(70)
-      return
-    }
-    const distance = haversineKm(
-      Number(restLat),
-      Number(restLng),
-      Number(destLat),
-      Number(destLng),
-    )
-    setDeliveryFee(Math.max(70, Math.round(70 + 30 * distance)))
-  }, [restaurantId, selectedAddressId, addresses, restaurantLocation])
 
   const handlePlaceOrder = async (e: FormEvent) => {
     e.preventDefault()
@@ -323,7 +330,40 @@ export default function Checkout({ onBack, onPlaced }: CheckoutProps) {
           </div>
         )}
 
-        {!loading && !error && !placedOrder && (
+        {session === false && !placedOrder && (
+          <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-lg font-semibold text-gray-900">
+              Sign in to checkout
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              {guestItems.length > 0
+                ? `Your cart has ${guestItems.length} item(s) saved on this device. Log in to place your order.`
+                : 'Log in to review and place your order.'}
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              {onSignIn && (
+                <button
+                  type="button"
+                  onClick={onSignIn}
+                  className="w-full rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700"
+                >
+                  Log in
+                </button>
+              )}
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                  Continue browsing
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {session === true && !loading && !error && !placedOrder && (
           <form onSubmit={handlePlaceOrder} className="mt-6 space-y-6">
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { useRestaurantSocket } from '../lib/socket'
+import { getStoredJSON, setStoredJSON } from '../lib/storage'
 
 interface Order {
   id: string
@@ -48,6 +49,8 @@ const pages: { id: ChefPage; title: string; description: string }[] = [
   { id: 'settings', title: 'Settings', description: 'Restaurant settings' },
 ]
 
+const ONLINE_KEY = 'chef:online'
+
 export default function Home({ onNavigate, onSelectOrder }: HomeProps) {
   const [orders, setOrders] = useState<Order[]>([])
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
@@ -55,9 +58,14 @@ export default function Home({ onNavigate, onSelectOrder }: HomeProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showCards, setShowCards] = useState(false)
+  const [localOnline, setLocalOnline] = useState(() =>
+    getStoredJSON<boolean>(ONLINE_KEY, false),
+  )
 
   const online =
-    restaurants.length > 0 && restaurants.every((r) => r.is_open !== false)
+    restaurants.length > 0
+      ? restaurants.every((r) => r.is_open !== false)
+      : localOnline
 
   const activeOrders = orders.filter(
     (order) => order.status !== 'delivered' && order.status !== 'cancelled',
@@ -105,6 +113,8 @@ export default function Home({ onNavigate, onSelectOrder }: HomeProps) {
           return isOpen === undefined ? restaurant : { ...restaurant, is_open: isOpen }
         }),
       )
+      setLocalOnline(target)
+      setStoredJSON(ONLINE_KEY, target)
       setError(null)
     } catch (err) {
       setError(

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { apiFetch } from '../lib/api'
+import { getStoredJSON, setStoredJSON, removeStored } from '../lib/storage'
 
 interface RestaurantForm {
   name: string
@@ -135,7 +136,7 @@ export default function RestaurantManage({
       .then((body) => {
         const restaurant = body.data?.restaurant
         if (restaurant) {
-          setForm({
+          const serverForm: RestaurantForm = {
             name: restaurant.name ?? '',
             slug: restaurant.slug ?? '',
             description: restaurant.description ?? '',
@@ -144,7 +145,12 @@ export default function RestaurantManage({
             phone: restaurant.phone ?? '',
             email: restaurant.email ?? '',
             is_open: restaurant.is_open !== false,
-          })
+          }
+          const draft = getStoredJSON<RestaurantForm | null>(
+            `draft:restaurant:${restaurantId}`,
+            null,
+          )
+          setForm(draft ?? serverForm)
           setCoverImage(restaurant.cover_image ?? null)
         }
       })
@@ -175,6 +181,11 @@ export default function RestaurantManage({
     void refresh()
     void refreshBanners()
   }, [refresh, refreshBanners])
+
+  useEffect(() => {
+    if (loading) return
+    setStoredJSON(`draft:restaurant:${restaurantId}`, form)
+  }, [form, loading, restaurantId])
 
   const handleRetry = () => {
     setLoading(true)
@@ -277,6 +288,7 @@ export default function RestaurantManage({
         }),
       })
       setSaved(true)
+      removeStored(`draft:restaurant:${restaurantId}`)
       onSaved?.()
     } catch (err) {
       setError(

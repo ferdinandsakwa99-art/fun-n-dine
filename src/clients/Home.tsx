@@ -6,6 +6,9 @@ import {
   type ReactNode,
 } from 'react'
 import { apiFetch } from '../lib/api'
+import { supabase } from '../lib/supabase'
+import { getCartCount, subscribeCart } from '../lib/cartStore'
+import { readCache, writeCache } from '../lib/storage'
 import { Marquee } from '../components/Marquee'
 
 interface Restaurant {
@@ -163,13 +166,24 @@ export default function Home({
   onOpenCart,
   onOpenProfile,
 }: HomeProps) {
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([])
-  const [banners, setBanners] = useState<RestaurantBanner[]>([])
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(
+    () => readCache<Restaurant[]>('restaurants') ?? [],
+  )
+  const [banners, setBanners] = useState<RestaurantBanner[]>(
+    () => readCache<RestaurantBanner[]>('restaurants/banners') ?? [],
+  )
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(
+    () => readCache<MenuItem[]>('menu-items?with_images=true') ?? [],
+  )
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [promotions, setPromotions] = useState<Promotion[]>([])
   const [cartCount, setCartCount] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => {
+    const r = readCache<Restaurant[]>('restaurants')
+    const b = readCache<RestaurantBanner[]>('restaurants/banners')
+    const i = readCache<MenuItem[]>('menu-items?with_images=true')
+    return !(r && b && i)
+  })
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLDivElement | null>(null)
@@ -191,9 +205,15 @@ export default function Home({
       ),
     ])
       .then(([restaurantsBody, bannersBody, menuItemsBody]) => {
-        setRestaurants(restaurantsBody.data?.restaurants ?? [])
-        setBanners(bannersBody.data?.banners ?? [])
-        setMenuItems(menuItemsBody.data?.menuItems ?? [])
+        const restaurantsList = restaurantsBody.data?.restaurants ?? []
+        const bannersList = bannersBody.data?.banners ?? []
+        const itemsList = menuItemsBody.data?.menuItems ?? []
+        setRestaurants(restaurantsList)
+        setBanners(bannersList)
+        setMenuItems(itemsList)
+        writeCache('restaurants', restaurantsList)
+        writeCache('restaurants/banners', bannersList)
+        writeCache('menu-items?with_images=true', itemsList)
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load content')
@@ -286,18 +306,30 @@ export default function Home({
 
   useEffect(() => {
     let cancelled = false
-    apiFetch('/api/cart')
-      .then((res) => res.json() as Promise<{ data?: { cart?: { items?: unknown[] } } }>)
-      .then((body) => {
-        if (!cancelled) {
-          setCartCount(body.data?.cart?.items?.length ?? 0)
-        }
-      })
-      .catch(() => {
-        // Cart fetch failing should not block browsing
-      })
+    let unsub: (() => void) | undefined
+    void supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return
+      if (data.session) {
+        apiFetch('/api/cart')
+          .then((res) => res.json() as Promise<{ data?: { cart?: { items?: unknown[] } } }>)
+          .then((body) => {
+            if (!cancelled) {
+              setCartCount(body.data?.cart?.items?.length ?? 0)
+            }
+          })
+          .catch(() => {
+            // Cart fetch failing should not block browsing
+          })
+      } else {
+        setCartCount(getCartCount())
+        unsub = subscribeCart(() => {
+          if (!cancelled) setCartCount(getCartCount())
+        })
+      }
+    })
     return () => {
       cancelled = true
+      unsub?.()
     }
   }, [])
 
