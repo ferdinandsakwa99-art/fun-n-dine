@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import { paymentBadge } from './paymentBadge'
 
 interface Order {
   id: string
   customer_name?: string
   total?: number
   status?: string
+  delivery_type?: string
+  payment_status?: string
+  payment_method?: string
   items?: unknown[]
   created_at?: string
 }
@@ -146,9 +150,14 @@ export default function RestaurantDetail({
                       </p>
                     )}
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-1">
                     <span className="inline-block rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
                       {order.status ?? 'pending'}
+                    </span>
+                    <span
+                      className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${paymentBadge(order).classes}`}
+                    >
+                      {paymentBadge(order).label}
                     </span>
                     {order.total !== undefined && (
                       <p className="mt-1 text-sm font-semibold text-gray-900">

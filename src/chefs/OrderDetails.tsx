@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { useRestaurantSocket } from '../lib/socket'
+import { paymentBadge } from './paymentBadge'
 import type { Order } from './Orders'
 
 interface OrderDetailsProps {
@@ -183,7 +184,7 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
                   }
                 />
                 {order.payment_status && (
-                  <Row label="Payment" value={order.payment_status} />
+                  <Row label="Payment" value={paymentBadge(order).label} />
                 )}
                 {order.subtotal !== undefined && (
                   <Row label="Subtotal" value={`KSh ${Number(order.subtotal).toFixed(2)}`} />
