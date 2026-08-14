@@ -50,6 +50,8 @@ interface CheckoutProps {
 
 type PaymentMethod = 'cash_on_delivery' | 'pay_now'
 
+type DeliveryType = 'delivery' | 'pickup'
+
 interface RestaurantLocation {
   latitude?: number | null
   longitude?: number | null
@@ -80,6 +82,7 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
   const [guestItems, setGuestItems] = useState<LocalCartItem[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>('')
+  const [deliveryType, setDeliveryType] = useState<DeliveryType>('delivery')
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>('cash_on_delivery')
   const [notes, setNotes] = useState('')
@@ -150,6 +153,7 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
   )?.menu_item?.restaurant_id
 
   const deliveryFee = useMemo(() => {
+    if (deliveryType === 'pickup') return 0
     if (!restaurantId || !selectedAddressId) return 0
     const address = addresses.find((addr) => addr.id === selectedAddressId)
     const restLat = restaurantLocation?.latitude
@@ -171,7 +175,13 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
       Number(destLng),
     )
     return Math.max(70, Math.round(70 + 30 * distance))
-  }, [restaurantId, selectedAddressId, addresses, restaurantLocation])
+  }, [
+    deliveryType,
+    restaurantId,
+    selectedAddressId,
+    addresses,
+    restaurantLocation,
+  ])
 
   const total = subtotal + deliveryFee + tax - discount
 
@@ -208,7 +218,7 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
       setPlaceError('Could not determine the restaurant for this order.')
       return
     }
-    if (!selectedAddressId) {
+    if (deliveryType === 'delivery' && !selectedAddressId) {
       setPlaceError('Please select a delivery address.')
       return
     }
@@ -223,7 +233,9 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
           restaurant_id: restaurantId,
           subtotal,
           total,
-          address_id: selectedAddressId,
+          delivery_type: deliveryType,
+          address_id:
+            deliveryType === 'delivery' ? selectedAddressId : undefined,
           status: 'pending',
           delivery_fee: deliveryFee,
           discount,
@@ -367,6 +379,48 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
           <form onSubmit={handlePlaceOrder} className="mt-6 space-y-6">
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">
+                How would you like your order?
+              </h2>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {(
+                  [
+                    {
+                      value: 'delivery',
+                      title: 'Delivery',
+                      description:
+                        'A rider brings it to your address.',
+                    },
+                    {
+                      value: 'pickup',
+                      title: 'Pickup',
+                      description:
+                        'Collect it yourself — no delivery fee.',
+                    },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setDeliveryType(option.value)}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      deliveryType === option.value
+                        ? 'border-purple-500 bg-purple-50 ring-1 ring-purple-300'
+                        : 'border-gray-200 hover:border-purple-300'
+                    }`}
+                  >
+                    <p className="font-semibold text-gray-900">
+                      {option.title}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {option.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-gray-900">
                 Order summary
               </h2>
               {items.length === 0 ? (
@@ -406,9 +460,13 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500">Delivery fee</span>
-                      <span className="font-medium text-gray-900">
-                        KSh {deliveryFee.toFixed(2)}
-                      </span>
+                      {deliveryType === 'pickup' ? (
+                        <span className="font-medium text-green-600">Free</span>
+                      ) : (
+                        <span className="font-medium text-gray-900">
+                          KSh {deliveryFee.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                     {discount > 0 && (
                       <div className="flex items-center justify-between text-sm">
@@ -430,58 +488,62 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
                         KSh {total.toFixed(2)}
                       </span>
                     </div>
-                    <p className="pt-1 text-xs text-gray-400">
-                      Delivery fee is an estimate and may be adjusted at order
-                      confirmation.
-                    </p>
+                    {deliveryType === 'delivery' && (
+                      <p className="pt-1 text-xs text-gray-400">
+                        Delivery fee is an estimate and may be adjusted at
+                        order confirmation.
+                      </p>
+                    )}
                   </div>
                 </>
               )}
             </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Delivery address
-              </h2>
-              {addresses.length === 0 ? (
-                <p className="mt-3 text-sm text-gray-500">
-                  No saved addresses. Add one from your profile before
-                  checking out.
-                </p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {addresses.map((address) => (
-                    <label
-                      key={address.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-4 transition hover:border-purple-400"
-                    >
-                      <input
-                        type="radio"
-                        name="address"
-                        value={address.id}
-                        checked={selectedAddressId === address.id}
-                        onChange={() => setSelectedAddressId(address.id)}
-                        className="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500"
-                      />
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {address.label ?? 'Address'}
-                          {address.is_default && (
-                            <span className="ml-2 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                              Default
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {address.full_address}
-                          {address.city ? `, ${address.city}` : ''}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
+            {deliveryType === 'delivery' && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Delivery address
+                </h2>
+                {addresses.length === 0 ? (
+                  <p className="mt-3 text-sm text-gray-500">
+                    No saved addresses. Add one from your profile before
+                    checking out.
+                  </p>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {addresses.map((address) => (
+                      <label
+                        key={address.id}
+                        className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-4 transition hover:border-purple-400"
+                      >
+                        <input
+                          type="radio"
+                          name="address"
+                          value={address.id}
+                          checked={selectedAddressId === address.id}
+                          onChange={() => setSelectedAddressId(address.id)}
+                          className="mt-1 h-4 w-4 text-purple-600 focus:ring-purple-500"
+                        />
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {address.label ?? 'Address'}
+                            {address.is_default && (
+                              <span className="ml-2 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                                Default
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {address.full_address}
+                            {address.city ? `, ${address.city}` : ''}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">Payment</h2>
@@ -497,10 +559,14 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
                   />
                   <div>
                     <p className="font-medium text-gray-900">
-                      Cash on delivery
+                      {deliveryType === 'pickup'
+                        ? 'Cash on pickup'
+                        : 'Cash on delivery'}
                     </p>
                     <p className="text-sm text-gray-500">
-                      Pay when your order arrives.
+                      {deliveryType === 'pickup'
+                        ? 'Pay when you collect your order.'
+                        : 'Pay when your order arrives.'}
                     </p>
                   </div>
                 </label>
@@ -516,7 +582,9 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
                   <div>
                     <p className="font-medium text-gray-900">Pay now</p>
                     <p className="text-sm text-gray-500">
-                      Pay online before delivery.
+                      {deliveryType === 'pickup'
+                        ? 'Pay online before pickup.'
+                        : 'Pay online before delivery.'}
                     </p>
                   </div>
                 </label>
@@ -534,7 +602,11 @@ export default function Checkout({ onBack, onPlaced, onSignIn }: CheckoutProps) 
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Leave at the door"
+                placeholder={
+                  deliveryType === 'pickup'
+                    ? 'e.g. Ready to collect at the counter'
+                    : 'e.g. Leave at the door'
+                }
                 rows={2}
                 className={`${inputClass} resize-none`}
               />

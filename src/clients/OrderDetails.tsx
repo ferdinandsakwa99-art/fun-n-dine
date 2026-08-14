@@ -11,6 +11,7 @@ interface Order {
   subtotal?: number
   delivery_fee?: number
   service_fee?: number
+  delivery_type?: string
   status?: string
   payment_status?: string
   items?: unknown[]
@@ -63,6 +64,7 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [confirmingPickup, setConfirmingPickup] = useState(false)
 
   const refresh = useCallback(() => {
     apiFetch(`/api/orders/${orderId}`)
@@ -86,6 +88,23 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
     setLoading(true)
     setError(null)
     void refresh()
+  }
+
+  const handleConfirmPickup = async () => {
+    if (!order) return
+    setConfirmingPickup(true)
+    try {
+      await apiFetch(`/api/orders/${order.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'picked_up' }),
+      })
+      setError(null)
+      void refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm pickup')
+    } finally {
+      setConfirmingPickup(false)
+    }
   }
 
   const image = order ? statusImage[order.status ?? ''] : undefined
@@ -152,28 +171,44 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
                     </p>
                   )}
                 </div>
-                <span
-                  className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
-                    statusStyles[order.status ?? ''] ?? 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {order.status ?? 'pending'}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  {order.delivery_type === 'pickup' && (
+                    <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
+                      Pickup
+                    </span>
+                  )}
+                  <span
+                    className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
+                      statusStyles[order.status ?? ''] ?? 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {order.status ?? 'pending'}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-4 divide-y divide-gray-100 border-t border-gray-100">
                 {order.order_number && (
                   <Row label="Order number" value={order.order_number} />
                 )}
+                <Row
+                  label="Fulfilment"
+                  value={
+                    order.delivery_type === 'pickup'
+                      ? 'Pickup'
+                      : 'Delivery'
+                  }
+                />
                 {order.payment_status && (
                   <Row label="Payment" value={order.payment_status} />
                 )}
                 {order.subtotal !== undefined && (
                   <Row label="Subtotal" value={`KSh ${Number(order.subtotal).toFixed(2)}`} />
                 )}
-                {order.delivery_fee !== undefined && (
-                  <Row label="Delivery fee" value={`KSh ${Number(order.delivery_fee).toFixed(2)}`} />
-                )}
+                {order.delivery_type !== 'pickup' &&
+                  order.delivery_fee !== undefined && (
+                    <Row label="Delivery fee" value={`KSh ${Number(order.delivery_fee).toFixed(2)}`} />
+                  )}
                 {order.service_fee !== undefined && (
                   <Row label="Service fee" value={`KSh ${Number(order.service_fee).toFixed(2)}`} />
                 )}
@@ -192,8 +227,10 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
                 />
                 <p className="mt-3 text-sm font-medium text-gray-700">
                   {order.status === 'preparing'
-                    ? "Your order is being prepared."
-                    : 'Your order is ready.'}
+                    ? 'Your order is being prepared.'
+                    : order.delivery_type === 'pickup'
+                      ? 'Your order is ready for pickup.'
+                      : 'Your order is ready.'}
                 </p>
               </div>
             )}
@@ -233,6 +270,25 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
                 </p>
               )}
             </div>
+
+            {order.delivery_type === 'pickup' && order.status === 'ready' && (
+              <div className="mt-6 rounded-2xl border border-teal-200 bg-teal-50 p-6">
+                <p className="text-sm text-teal-800">
+                  Your order is ready for pickup. Once you have collected it,
+                  confirm below.
+                </p>
+                <button
+                  type="button"
+                  disabled={confirmingPickup}
+                  onClick={() => void handleConfirmPickup()}
+                  className="mt-4 w-full rounded-lg bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {confirmingPickup
+                    ? 'Confirming...'
+                    : 'I have picked up my order'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -154,28 +154,44 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
                     </p>
                   )}
                 </div>
-                <span
-                  className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
-                    statusStyles[order.status ?? ''] ?? 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {order.status ?? 'pending'}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  {order.delivery_type === 'pickup' && (
+                    <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
+                      Pickup
+                    </span>
+                  )}
+                  <span
+                    className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
+                      statusStyles[order.status ?? ''] ?? 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {order.status ?? 'pending'}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-4 divide-y divide-gray-100 border-t border-gray-100">
                 {order.order_number && (
                   <Row label="Order number" value={order.order_number} />
                 )}
+                <Row
+                  label="Fulfilment"
+                  value={
+                    order.delivery_type === 'pickup'
+                      ? 'Pickup'
+                      : 'Delivery'
+                  }
+                />
                 {order.payment_status && (
                   <Row label="Payment" value={order.payment_status} />
                 )}
                 {order.subtotal !== undefined && (
                   <Row label="Subtotal" value={`KSh ${Number(order.subtotal).toFixed(2)}`} />
                 )}
-                {order.delivery_fee !== undefined && (
-                  <Row label="Delivery fee" value={`KSh ${Number(order.delivery_fee).toFixed(2)}`} />
-                )}
+                {order.delivery_type !== 'pickup' &&
+                  order.delivery_fee !== undefined && (
+                    <Row label="Delivery fee" value={`KSh ${Number(order.delivery_fee).toFixed(2)}`} />
+                  )}
                 {order.service_fee !== undefined && (
                   <Row label="Service fee" value={`KSh ${Number(order.service_fee).toFixed(2)}`} />
                 )}
@@ -223,7 +239,11 @@ export default function OrderDetails({ orderId, onBack }: OrderDetailsProps) {
 
             <div className="mt-6 flex items-center gap-2">
               {(() => {
-                const action = nextActions[order.status ?? '']
+                const pickupAction =
+                  order.delivery_type === 'pickup' && order.status === 'ready'
+                    ? { label: 'Mark as picked up', to: 'picked_up' }
+                    : undefined
+                const action = pickupAction ?? nextActions[order.status ?? '']
                 if (!action) return null
                 return (
                   <button

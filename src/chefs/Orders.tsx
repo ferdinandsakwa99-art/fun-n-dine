@@ -12,6 +12,7 @@ export interface Order {
   subtotal?: number
   delivery_fee?: number
   service_fee?: number
+  delivery_type?: string
   status?: string
   payment_status?: string
   items?: unknown[]
@@ -197,7 +198,11 @@ export default function Orders({ onBack, onSelectOrder }: OrdersProps) {
         {!loading && !error && orders.length > 0 && (
           <div className="mt-6 space-y-4">
             {orders.map((order) => {
-              const action = nextActions[order.status ?? '']
+              const action =
+                order.delivery_type === 'pickup' &&
+                order.status === 'ready'
+                  ? { label: 'Mark as picked up', to: 'picked_up' }
+                  : nextActions[order.status ?? '']
               const actionInFlight = updatingId === order.id
               return (
                 <div
@@ -220,7 +225,12 @@ export default function Orders({ onBack, onSelectOrder }: OrdersProps) {
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="flex flex-col items-end gap-1">
+                      {order.delivery_type === 'pickup' && (
+                        <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
+                          Pickup
+                        </span>
+                      )}
                       <span
                         className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
                           statusStyles[order.status ?? ''] ?? 'bg-gray-100 text-gray-600'
